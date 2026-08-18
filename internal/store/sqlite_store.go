@@ -40,14 +40,10 @@ func (s *SQLiteStore) InTx(ctx context.Context, fn func(ctx context.Context) err
 // otherwise the bare *sql.DB. This lets repositories run both inside
 // and outside transactions without code duplication.
 func (s *SQLiteStore) executor(ctx context.Context) DBExecutor {
-	tx := TxFromContext(ctx)
-	if tx == nil {
-		return s.db.SQL()
+	if tx := TxFromContext(ctx); tx != nil {
+		return tx
 	}
-	if ctx.Err() != nil {
-		return s.db.SQL()
-	}
-	return tx
+	return s.db.SQL()
 }
 
 // DBExecutor is satisfied by both *sql.DB and *sql.Tx.

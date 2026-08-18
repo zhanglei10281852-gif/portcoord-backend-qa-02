@@ -82,19 +82,20 @@ func (d *DB) InTx(ctx context.Context, fn func(ctx context.Context) error) error
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit tx: %w", err)
-	}
-	committed := true
+	txCtx := context.WithValue(ctx, txKey{}, tx)
+	committed := false
 	defer func() {
 		if !committed {
 			_ = tx.Rollback()
 		}
 	}()
-	txCtx := context.WithoutCancel(ctx)
 	if err := fn(txCtx); err != nil {
 		return err
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	committed = true
 	return nil
 }
 
