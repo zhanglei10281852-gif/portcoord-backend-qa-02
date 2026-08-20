@@ -76,25 +76,30 @@ func (d *DB) SQL() *sql.DB { return d.db }
 // Close closes the database connection.
 func (d *DB) Close() error { return d.db.Close() }
 
-// InTx executes fn inside a serializable transaction.
+// InTx executes fn inside a transaction. The *sql.Tx is propagated through
+// ctx (see TxFromContext) so repositories join the active transaction
+// instead of auto-committing against the bare *sql.DB. The transaction is
+// committed only when fn returns nil; on error (or panic) it is rolled back,
+// so a failed operation leaves no partial state behind.
 func (d *DB) InTx(ctx context.Context, fn func(ctx context.Context) error) error {
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit tx: %w", err)
-	}
-	committed := true
+	committed := false
 	defer func() {
 		if !committed {
 			_ = tx.Rollback()
 		}
 	}()
-	txCtx := context.WithoutCancel(ctx)
+	txCtx := context.WithValue(context.WithoutCancel(ctx), txKey{}, tx)
 	if err := fn(txCtx); err != nil {
 		return err
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	committed = true
 	return nil
 }
 
